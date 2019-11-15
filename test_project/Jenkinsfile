@@ -35,8 +35,8 @@ node {
                     def client = Artifactory.newConanClient(userHome: "${env.WORKSPACE}")
                     def remoteName = "artifactory-local"
 
-                    String profile = "conanio-gcc8"
-                    String lockfile = "conan.lock"
+                    def profile = "conanio-gcc8"
+                    def lockfile = "conan.lock"
 
                     client.run(command: "config install ${config_url}".toString())
                     client.run(command: "config install -sf hooks -tf hooks https://github.com/conan-io/hooks.git")
@@ -48,7 +48,7 @@ node {
                     // TODO: Iterate profiles
                     client.run(command: "graph lock --profile ${profile} --lockfile=${lockfile} ${params.project_id}".toString())
                     sh "cat ${lockfile}"
-                    sh "conan graph build-order ${lockfile} --build=missing".toString()
+                    sh "conan graph build-order ${lockfile} --build=missing"
                 }
             }
         }
