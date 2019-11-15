@@ -46,7 +46,7 @@ node {
 
                     echo "Install the reference"
                     client.run(command: "install ${params.reference} --profile ${profile}".toString())
-                    client.run(command: "download ${params.project_id}".toString())
+                    client.run(command: "download ${params.project_id} -r ${remoteName}".toString())
 
                     // TODO: Iterate profiles
                     client.run(command: "graph lock --profile ${profile} --lockfile=${lockfile} ${params.project_id}".toString())
