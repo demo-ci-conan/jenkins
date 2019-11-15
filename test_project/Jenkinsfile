@@ -64,11 +64,7 @@ node {
                         echo "it_stages: ${it_stages}"
                         for (int i = 0; i < it_stages.size(); i++) {
                             def it_parallel = it_stages[i]
-                            echo "it_parallel: ${it_parallel}"
-                            for (int j = 0; j < it_parallel.size(); j++) {
-                                def it_job = it_parallel[i]
-                                echo "it_job: ${it_job}"
-                            }
+                            echo "it_parallel[1]: ${it_parallel[1]}"
                         }
 
                     }
