@@ -33,7 +33,7 @@ node {
                 withEnv(["CONAN_USER_HOME=${env.WORKSPACE}/conan_home"]) {
                     echo "Create a Conan client (CONAN_USER_HOME: '${env.WORKSPACE}/conan_cache')"
                     def server = Artifactory.server artifactory_name
-                    def client = Artifactory.newConanClient(userHome: "${env.WORKSPACE}/conan_cache")
+                    def client = Artifactory.newConanClient(userHome: "${env.WORKSPACE}/conan_cache".toString())
                     def remoteName = "artifactory-local"
 
                     def profile = "conanio-gcc8"
