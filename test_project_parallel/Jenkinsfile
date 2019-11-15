@@ -57,6 +57,8 @@ node {
             echo " - for changes in '${params.reference}'"
         }
         
+        def lockfile = "conan.lock"
+
         stage('Dynamic node') {
             docker.image("conanio/gcc8").inside("--net=docker_jenkins_artifactory") {
                 echo "Inside the docker"
@@ -66,7 +68,7 @@ node {
                     def client = Artifactory.newConanClient(userHome: "${env.WORKSPACE}/conan_home".toString())
 
                     def profile = "conanio-gcc8"
-                    def lockfile = "conan.lock"
+                    
 
                     echo "Configure the Conan client"
                     client.run(command: "config install ${config_url}".toString())
@@ -86,23 +88,34 @@ node {
             }
         }
 
+        def build_order_file = "bo.json"
+
+        stage("Compute build order") {
+            docker.image("conanio/gcc8").inside("--net=docker_jenkins_artifactory") {
+                unstash "lockfile"
+
+                def server = Artifactory.server artifactory_name
+                def client = Artifactory.newConanClient()
+                client.run(command: "config install ${config_url}".toString())
+                client.run(command: "config install -sf hooks -tf hooks https://github.com/conan-io/hooks.git")
+                client.remote.add server: server, repo: artifactory_repo, remoteName: remoteName, force: true
+
+                client.run(command: "graph build-order ${lockfile} --build missing --json ${build_order_file}".toString())
+                sh "cat ${build_order_file}"
+
+                stash name: "build_order", includes: "${build_order_file}"                
+            }
+        }
+
         stage("Iterate build order") {
             unstash "lockfile"
-
-            def server = Artifactory.server artifactory_name
-            def client = Artifactory.newConanClient()
-            client.run(command: "config install ${config_url}".toString())
-            client.run(command: "config install -sf hooks -tf hooks https://github.com/conan-io/hooks.git")
-            client.remote.add server: server, repo: artifactory_repo, remoteName: remoteName, force: true
-
-            def build_order_file = "bo.json"
-            client.run(command: "graph build-order ${lockfile} --build missing --json ${build_order_file}".toString())
-            sh "cat ${build_order_file}"
+            unstash "build_order"
 
             // Iterate build-order and call nodes
             def bo = readJSON file: build_order_file
             bo.each { it_stages ->
 
+                def stage_lockfiles = []
                 def stage_jobs = [:]
                 for (int i = 0; i < it_stages.size(); i++) {
                     def job_reference = it_stages[i][1]
@@ -111,21 +124,31 @@ node {
                     sh "cp ${lockfile} ${actual_reference_name}.lock"
                     stash name: actual_reference_name, includes: "${lockfile}"
                     
+                    stage_lockfiles.add(actual_reference_name)
                     stage_jobs[actual_reference_name] = build_ref_with_lockfile(job_reference, lockfile, profile, config_url)
                 }
 
                 stage ("Compile stage") {
                     parallel stage_jobs
                 }
+                
+                stage ("Complete lockfile") {
+                    docker.image("conanio/gcc8").inside("--net=docker_jenkins_artifactory") {
+                        unstash "lockfile"
 
-                stage_jobs.each { id, _ -> 
-                    unstash id
-                    client.run(command: "graph update-lock ${lockfile} ${id}.lock".toString())
-                    sh "cat ${lockfile}"
+                        stage_lockfiles.each { id -> 
+                            unstash id
+                            sh "conan graph update-lock ${lockfile} ${id}.lock"
+                            sh "cat ${lockfile}"
+                        }
+
+                        stash name: "lockfile", includes: "${lockfile}"
+                    }
                 }
 
             }
 
+            unstash "lockfile"
             sh "cat ${lockfile}"
         }
 
