@@ -36,9 +36,12 @@ def build_ref_with_lockfile(job_reference, lockfile, profile, config_url, artifa
                     stage("Build ${actual_reference_name}") {
                         unstash actual_reference_name
 
+                        sh "cat ${actual_reference_name}.lock"
                         //client.run(command: "install ${recipe_reference_with_revision} --profile ${profile}".toString())
                         client.run(command: "install ${recipe_reference_with_revision} --build ${actual_reference_name} --lockfile ${actual_reference_name}.lock --profile ${profile}".toString())
                         stash name: actual_reference_name, includes: "${actual_reference_name}.lock"
+
+                        sh "cat ${actual_reference_name}.lock"
                     }
                 }
                 finally {
