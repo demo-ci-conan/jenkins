@@ -61,8 +61,9 @@ node {
                     // Iterate build-order and call nodes
                     def bo = readJSON file: build_order_file
                     bo[0].each { item ->
+                        echo "item: ${item}"
                         item.each { pkg ->
-                            echo "Package: ${pkg[1]}"
+                            echo "Package: ${pkg}"
                         }
                     }
 
