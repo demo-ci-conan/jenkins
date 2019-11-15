@@ -17,7 +17,7 @@ def post_status(state) {
     }
 }
 
-def build_ref_with_lockfile(job_reference, lockfile, profile, config_url) {
+def build_ref_with_lockfile(job_reference, lockfile, profile, config_url, artifactory_name, remoteName, artifactory_repo) {
     return {
         node {
             docker.image("conanio/gcc8").inside("--net=docker_jenkins_artifactory") {
@@ -126,7 +126,7 @@ node {
                     stash name: actual_reference_name, includes: "${lockfile}"
                     
                     stage_lockfiles.add(actual_reference_name)
-                    stage_jobs[actual_reference_name] = build_ref_with_lockfile(job_reference, lockfile, profile, config_url)
+                    stage_jobs[actual_reference_name] = build_ref_with_lockfile(job_reference, lockfile, profile, config_url, artifactory_name, remoteName, artifactory_repo)
                 }
 
                 stage ("Compile stage") {
