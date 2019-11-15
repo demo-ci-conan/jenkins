@@ -18,26 +18,24 @@ def post_status(state) {
 
 def build_ref_with_lockfile(job_reference, lockfile, profile) {
     return {
-        def actual_reference_name = job_reference.split("/")[0]
-
-        stage("Stash lockfile") {
-            stash name: actual_reference_name, includes: "${lockfile}"
-        }
-
         node {
             docker.image("conanio/gcc8").inside("--net=docker_jenkins_artifactory") {
-                def server = Artifactory.server artifactory_name
-                def client = Artifactory.newConanClient(userHome: "${env.WORKSPACE}/conan_home".toString())
-                def remoteName = "artifactory-local"
+                try {
+                    def server = Artifactory.server artifactory_name
+                    def client = Artifactory.newConanClient(userHome: "${env.WORKSPACE}/conan_home".toString())
+                    def remoteName = "artifactory-local"
+                    def actual_reference_name = job_reference.split("/")[0]
 
-                unstash actual_reference_name
-                client.run(command: "install ${job_reference} --build=${actual_reference_name} --lockfile=${lockfile} --profile ${profile}".toString())
-                stash name: actual_reference_name, includes: "${lockfile}"
+                    stage("Build ${actual_reference_name}") {
+                        unstash actual_reference_name
+                        client.run(command: "install ${job_reference} --build=${actual_reference_name} --lockfile=${lockfile} --profile ${profile}".toString())
+                        stash name: actual_reference_name, includes: "${lockfile}"
+                    }
+                }
+                finally {
+                    deleteDir()
+                }
             }
-        }
-
-        stage("Merge build infos") {
-            unstash actual_reference_name
         }
     }
 }
@@ -93,13 +91,19 @@ node {
                         for (int i = 0; i < it_stages.size(); i++) {
                             def job_reference = it_stages[i][1]
                             def actual_reference_name = job_reference.split("/")[0]
+                            
                             sh "cp ${lockfile} ${actual_reference_name}.lock"
+                            stash name: actual_reference_name, includes: "${lockfile}"
+                            
                             stage_jobs[actual_reference_name] = build_ref_with_lockfile(job_reference, lockfile, profile)
                         }
 
-                        parallel stage_jobs
+                        stage ("Compile stage") {
+                            parallel stage_jobs
+                        }
 
                         stage_jobs.each { id, _ -> 
+                            unstash id
                             client.run(command: "graph update-lock ${lockfile} ${id}.lock".toString())
                             sh "cat ${lockfile}"
                         }
