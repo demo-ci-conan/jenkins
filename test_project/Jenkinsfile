@@ -1,0 +1,61 @@
+import groovy.json.JsonOutput
+
+def config_url = "https://github.com/demo-ci-conan/settings.git"
+
+def post_status(state) {
+    def context = "conan-ci/projects - ${params.project_id} - ${params.reference}"
+    def description = "Build for '${params.reference}' done!"
+    def target_url = "https://my.url"
+
+    withCredentials([usernamePassword(credentialsId: 'github-user-token', passwordVariable: 'pass', usernameVariable: 'user')]) {
+        def url = "https://api.github.com/repos/${params.organization}/${params.repository}/statuses/${params.sha1}?access_token=$pass"
+        def payload = JsonOutput.toJson(["state": state, "context": context, "description": description, "target_url": target_url])
+        def response = sh(returnStdout: true, script: "curl -v -H \"Accept: application/json\" -H \"Content-type: application/json\" -X POST -d '${payload}' ${url}").trim()
+    }
+}
+
+node {
+    def state = "error"
+
+    try {
+        post_status("pending")
+
+        stage('Trigger') {
+            echo "Building project '${params.project_id}'"
+            echo " - for changes in '${params.reference}'"
+        }
+        
+        stage("Dynamic node") {
+            docker.image("conanio/gcc8").inside("--net=docker_jenkins_artifactory") {
+                withEnv(['CONAN_USER_HOME=${env.WORKSPACE}/conan_cache']) {
+                    def artifactory_name = "Artifactory Docker"
+                    def artifactory_repo = "conan-local"
+
+                    def server = Artifactory.server artifactory_name
+                    def client = Artifactory.newConanClient(userHome: "${env.WORKSPACE}")
+                    def remoteName = "artifactory-local"
+
+                    String profile = "conanio-gcc8"
+                    String lockfile = "conan.lock"
+
+                    client.run(command: "config install ${config_url}".toString())
+                    client.run(command: "config install -sf hooks -tf hooks https://github.com/conan-io/hooks.git")
+                    client.remote.add server: server, repo: artifactory_repo, remoteName: remoteName, force: true
+
+                    client.run(command: "install ${params.reference} --profile ${profile}".toString())
+                    client.run(command: "install ${params.project_id} --profile ${profile}".toString())
+
+                    // TODO: Iterate profiles
+                    client.run(command: "graph lock --profile ${profile} --lockfile=${lockfile} ${params.project_id}".toString())
+                    sh "cat ${lockfile}"
+                    sh "conan graph build-order ${lockfile} --build=missing".toString()
+                }
+            }
+        }
+
+        state = "success"
+    }
+    finally {
+        post_status(state)
+    }    
+}
