@@ -46,7 +46,7 @@ def build_ref_with_lockfile(job_reference, lockfile, profile, config_url, artifa
 
                     stage("Upload packages") {
                         String uploadCommand = "upload ${actual_reference} --all -r ${remoteName} --confirm"
-                        client.run(command: uploadCommand)
+                        client.run(command: uploadCommand)  // TODO: Better if we share the cache for these jobs... shouldn't have race conditions.
                     }
                 }
                 finally {
@@ -59,12 +59,10 @@ def build_ref_with_lockfile(job_reference, lockfile, profile, config_url, artifa
 
 
 node {
-    def state = "error"
-
     try {
         post_status("pending")
 
-        stage('Trigger') {
+        stage('Build information') {
             echo "Building project '${params.project_id}'"
             echo " - for changes in '${params.reference}'"
         }
@@ -166,10 +164,16 @@ node {
             sh "cat ${lockfile}"
         }
 
-        state = "success"
+        stage ("Notify success") {
+            post_status("success")
+        }
+    }
+    catch (error) {
+        stage ("Notify failure") {
+            post_status("error")
+        }
     }
     finally {
-        post_status(state)
         deleteDir() /* clean up our workspace */
     }    
 }
