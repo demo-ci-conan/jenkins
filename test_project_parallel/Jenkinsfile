@@ -37,8 +37,8 @@ def build_ref_with_lockfile(job_reference, lockfile, profile, config_url, artifa
                         unstash actual_reference_name
 
                         //client.run(command: "install ${recipe_reference_with_revision} --profile ${profile}".toString())
-                        client.run(command: "install ${recipe_reference_with_revision} --build ${actual_reference_name} --lockfile ${lockfile} --profile ${profile}".toString())
-                        stash name: actual_reference_name, includes: "${lockfile}"
+                        client.run(command: "install ${recipe_reference_with_revision} --build ${actual_reference_name} --lockfile ${actual_reference_name}.lock --profile ${profile}".toString())
+                        stash name: actual_reference_name, includes: "${actual_reference_name}.lock"
                     }
                 }
                 finally {
@@ -127,7 +127,7 @@ node {
                     def actual_reference_name = job_reference.split("/")[0]
                     
                     sh "cp ${lockfile} ${actual_reference_name}.lock"
-                    stash name: actual_reference_name, includes: "${lockfile}"
+                    stash name: actual_reference_name, includes: "${actual_reference_name}.lock"
                     
                     stage_lockfiles.add(actual_reference_name)
                     stage_jobs[actual_reference_name] = build_ref_with_lockfile(job_reference, lockfile, profile, config_url, artifactory_name, remoteName, artifactory_repo)
