@@ -16,14 +16,19 @@ def post_status(state) {
     }
 }
 
-def build_ref_with_lockfile(job_reference, lockfile, profile) {
+def build_ref_with_lockfile(job_reference, lockfile, profile, config_url) {
     return {
         node {
             docker.image("conanio/gcc8").inside("--net=docker_jenkins_artifactory") {
                 try {
                     def server = Artifactory.server artifactory_name
                     def client = Artifactory.newConanClient(userHome: "${env.WORKSPACE}/conan_home".toString())
+                    
                     def remoteName = "artifactory-local"
+                    client.run(command: "config install ${config_url}".toString())
+                    client.run(command: "config install -sf hooks -tf hooks https://github.com/conan-io/hooks.git")
+                    client.remote.add server: server, repo: artifactory_repo, remoteName: remoteName, force: true
+
                     def actual_reference_name = job_reference.split("/")[0]
 
                     stage("Build ${actual_reference_name}") {
@@ -77,43 +82,52 @@ node {
                     client.run(command: "graph lock --profile ${profile} --lockfile=${lockfile} ${params.project_id}".toString())
                     sh "cat ${lockfile}"
 
-                    client.run(command: "remote list".toString())
-
-                    def build_order_file = "bo.json"
-                    client.run(command: "graph build-order ${lockfile} --build missing --json ${build_order_file}".toString())
-                    sh "cat ${build_order_file}"
-
-                    // Iterate build-order and call nodes
-                    def bo = readJSON file: build_order_file
-                    bo.each { it_stages ->
-
-                        def stage_jobs = [:]
-                        for (int i = 0; i < it_stages.size(); i++) {
-                            def job_reference = it_stages[i][1]
-                            def actual_reference_name = job_reference.split("/")[0]
-                            
-                            sh "cp ${lockfile} ${actual_reference_name}.lock"
-                            stash name: actual_reference_name, includes: "${lockfile}"
-                            
-                            stage_jobs[actual_reference_name] = build_ref_with_lockfile(job_reference, lockfile, profile)
-                        }
-
-                        stage ("Compile stage") {
-                            parallel stage_jobs
-                        }
-
-                        stage_jobs.each { id, _ -> 
-                            unstash id
-                            client.run(command: "graph update-lock ${lockfile} ${id}.lock".toString())
-                            sh "cat ${lockfile}"
-                        }
-
-                    }
-
-                    sh "cat ${lockfile}"
-
+                    stash name: "lockfile", includes: "${lockfile}"
                 }
             }
+        }
+
+        stage("Iterate build order") {
+            unstash "lockfile"
+
+            def server = Artifactory.server artifactory_name
+            def client = Artifactory.newConanClient()
+            client.run(command: "config install ${config_url}".toString())
+            client.run(command: "config install -sf hooks -tf hooks https://github.com/conan-io/hooks.git")
+            client.remote.add server: server, repo: artifactory_repo, remoteName: remoteName, force: true
+
+            def build_order_file = "bo.json"
+            client.run(command: "graph build-order ${lockfile} --build missing --json ${build_order_file}".toString())
+            sh "cat ${build_order_file}"
+
+            // Iterate build-order and call nodes
+            def bo = readJSON file: build_order_file
+            bo.each { it_stages ->
+
+                def stage_jobs = [:]
+                for (int i = 0; i < it_stages.size(); i++) {
+                    def job_reference = it_stages[i][1]
+                    def actual_reference_name = job_reference.split("/")[0]
+                    
+                    sh "cp ${lockfile} ${actual_reference_name}.lock"
+                    stash name: actual_reference_name, includes: "${lockfile}"
+                    
+                    stage_jobs[actual_reference_name] = build_ref_with_lockfile(job_reference, lockfile, profile, config_url)
+                }
+
+                stage ("Compile stage") {
+                    parallel stage_jobs
+                }
+
+                stage_jobs.each { id, _ -> 
+                    unstash id
+                    client.run(command: "graph update-lock ${lockfile} ${id}.lock".toString())
+                    sh "cat ${lockfile}"
+                }
+
+            }
+
+            sh "cat ${lockfile}"
         }
 
         state = "success"
