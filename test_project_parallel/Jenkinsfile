@@ -57,6 +57,7 @@ node {
             echo " - for changes in '${params.reference}'"
         }
         
+        def profile = "conanio-gcc8"
         def lockfile = "conan.lock"
 
         stage('Dynamic node') {
@@ -67,7 +68,7 @@ node {
                     def server = Artifactory.server artifactory_name
                     def client = Artifactory.newConanClient(userHome: "${env.WORKSPACE}/conan_home".toString())
 
-                    def profile = "conanio-gcc8"
+                    
                     
 
                     echo "Configure the Conan client"
