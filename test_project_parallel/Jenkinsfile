@@ -37,7 +37,9 @@ def build_ref_with_lockfile(job_reference, lockfile, profile, config_url, artifa
                         unstash actual_reference_name
 
                         sh "cat ${actual_reference_name}.lock"
-                        client.run(command: "install ${recipe_reference_with_revision} --build ${actual_reference} --lockfile ${actual_reference_name}.lock --profile ${profile}".toString())
+                        sh "cp ${actual_reference_name}.lock conan.lock"
+                        client.run(command: "install ${recipe_reference_with_revision} --build ${actual_reference} --lockfile conan.lock --profile ${profile}".toString())
+                        sh "cp conan.lock ${actual_reference_name}.lock"
                         sh "cat ${actual_reference_name}.lock"
                         stash name: actual_reference_name, includes: "${actual_reference_name}.lock"
                     }
