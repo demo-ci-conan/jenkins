@@ -29,7 +29,7 @@ node {
         
         stage("Dynamic node") {
             docker.image("conanio/gcc8").inside("--net=docker_jenkins_artifactory") {
-
+                echoo "Inside the docker"
                 withEnv(["CONAN_USER_HOME=${env.WORKSPACE}/conan_home"]) {
                     echo "Create a Conan client (CONAN_USER_HOME: '${env.WORKSPACE}/conan_cache')".toString()
                     def server = Artifactory.server artifactory_name
