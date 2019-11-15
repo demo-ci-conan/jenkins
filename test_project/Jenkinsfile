@@ -58,6 +58,17 @@ node {
                     client.run(command: "graph build-order ${lockfile} --build missing --json ${build_order_file}".toString())
                     sh "cat ${build_order_file}"
 
+                    // Iterate build-order and call nodes
+                    def bo = readJSON file: build_order_file
+                    bo = bo[0]
+
+                    b[0].each { item ->
+                        item.each { pkg ->
+                            echo "Package: ${pkg[1]}"
+                        }
+                    }
+
+
                 }
             }
         }
