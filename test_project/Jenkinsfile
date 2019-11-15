@@ -66,15 +66,15 @@ node {
                             def job_reference = it_stages[i][1]
                             stage("Build ${job_reference}") {
                                 sh "cp ${lockfile} building.lock"
-                                client.run(command: "conan install ${job_reference} --build=${job_reference} --lockfile=building.lock".toString())
-                                client.run(command: "conan graph update-lock ${lockfile} building.lock")
+                                client.run(command: "install ${job_reference} --build=${job_reference} --lockfile=building.lock".toString())
+                                client.run(command: "graph update-lock ${lockfile} building.lock")
                                 sh "cat ${lockfile}"
                             }
                         }
                     }
 
                     sh "cat ${lockfile}"
-                    
+
                 }
             }
         }
