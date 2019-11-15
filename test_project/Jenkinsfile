@@ -62,12 +62,15 @@ node {
                     def bo = readJSON file: build_order_file
                     bo.each { it_stages ->
                         echo "it_stages: ${it_stages}"
-                        it_stages.each { -> it_parallel
+                        for (int i = 0; i < it_stages.size(); i++) {
+                            def it_parallel = it_stages[i]
                             echo "it_parallel: ${it_parallel}"
-                            it_parallel.each { -> it
+                            for (int j = 0; j < it_parallel.size(); j++) {
+                                def it = it_parallel[i]
                                 echo "it: ${it}"
                             }
                         }
+
                     }
                 }
             }
