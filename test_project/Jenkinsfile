@@ -1,5 +1,9 @@
 import groovy.json.JsonOutput
 
+def artifactory_name = "Artifactory Docker"
+def artifactory_repo = "conan-local"
+def config_url = "https://github.com/demo-ci-conan/settings.git"
+
 def post_status(state) {
     def context = "conan-ci/projects - ${params.project_id} - ${params.reference}"
     def description = "Build for '${params.reference}' done!"
@@ -13,9 +17,6 @@ def post_status(state) {
 }
 
 pipeline {
-    def artifactory_name = "Artifactory Docker"
-    def artifactory_repo = "conan-local"
-    def config_url = "https://github.com/demo-ci-conan/settings.git"
     
     node {
         def state = "error"
