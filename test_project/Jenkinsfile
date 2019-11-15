@@ -48,7 +48,7 @@ node {
                     client.run(command: "install ${params.reference} --profile ${profile}".toString())
                     client.run(command: "download ${params.project_id} -r ${remoteName}".toString())
 
-                    // TODO: Iterate profiles
+                    // TODO: Iterate profiles (can go in parallel)
                     client.run(command: "graph lock --profile ${profile} --lockfile=${lockfile} ${params.project_id}".toString())
                     sh "cat ${lockfile}"
 
@@ -85,5 +85,6 @@ node {
     }
     finally {
         post_status(state)
+        deleteDir()
     }    
 }
