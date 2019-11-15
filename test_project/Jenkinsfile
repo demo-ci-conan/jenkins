@@ -1,22 +1,22 @@
 import groovy.json.JsonOutput
 
+def post_status(state) {
+    def context = "conan-ci/projects - ${params.project_id} - ${params.reference}"
+    def description = "Build for '${params.reference}' done!"
+    def target_url = "https://my.url"
+
+    withCredentials([usernamePassword(credentialsId: 'github-user-token', passwordVariable: 'pass', usernameVariable: 'user')]) {
+        def url = "https://api.github.com/repos/${params.organization}/${params.repository}/statuses/${params.sha1}?access_token=$pass"
+        def payload = JsonOutput.toJson(["state": state, "context": context, "description": description, "target_url": target_url])
+        def response = sh(returnStdout: true, script: "curl -v -H \"Accept: application/json\" -H \"Content-type: application/json\" -X POST -d '${payload}' ${url}").trim()
+    }
+}
+
 pipeline {
     def artifactory_name = "Artifactory Docker"
     def artifactory_repo = "conan-local"
     def config_url = "https://github.com/demo-ci-conan/settings.git"
-
-    def post_status(state) {
-        def context = "conan-ci/projects - ${params.project_id} - ${params.reference}"
-        def description = "Build for '${params.reference}' done!"
-        def target_url = "https://my.url"
-
-        withCredentials([usernamePassword(credentialsId: 'github-user-token', passwordVariable: 'pass', usernameVariable: 'user')]) {
-            def url = "https://api.github.com/repos/${params.organization}/${params.repository}/statuses/${params.sha1}?access_token=$pass"
-            def payload = JsonOutput.toJson(["state": state, "context": context, "description": description, "target_url": target_url])
-            def response = sh(returnStdout: true, script: "curl -v -H \"Accept: application/json\" -H \"Content-type: application/json\" -X POST -d '${payload}' ${url}").trim()
-        }
-    }
-
+    
     node {
         def state = "error"
 
