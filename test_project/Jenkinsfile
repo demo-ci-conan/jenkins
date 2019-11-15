@@ -69,7 +69,7 @@ node {
                                 def actual_reference_name = job_reference.split("/")[0]
                                 sh "cp ${lockfile} building.lock"
                                 client.run(command: "install ${actual_reference} --build=${actual_reference_name} --lockfile=building.lock --profile ${profile}".toString())
-                                client.run(command: "graph update-lock ${lockfile} building.lock")
+                                client.run(command: "graph update-lock ${lockfile} building.lock".toString())
                                 sh "cat ${lockfile}"
                             }
                         }
