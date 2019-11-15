@@ -1,0 +1,121 @@
+import groovy.json.JsonOutput
+
+def artifactory_name = "Artifactory Docker"
+def artifactory_repo = "conan-local"
+def config_url = "https://github.com/demo-ci-conan/settings.git"
+
+def post_status(state) {
+    def context = "conan-ci/projects - ${params.project_id} - ${params.reference}"
+    def description = "Build for '${params.reference}' done!"
+    def target_url = "https://my.url"
+
+    withCredentials([usernamePassword(credentialsId: 'github-user-token', passwordVariable: 'pass', usernameVariable: 'user')]) {
+        def url = "https://api.github.com/repos/${params.organization}/${params.repository}/statuses/${params.sha1}?access_token=$pass"
+        def payload = JsonOutput.toJson(["state": state, "context": context, "description": description, "target_url": target_url])
+        def response = sh(returnStdout: true, script: "curl -v -H \"Accept: application/json\" -H \"Content-type: application/json\" -X POST -d '${payload}' ${url}").trim()
+    }
+}
+
+def build_ref_with_lockfile(job_reference, lockfile, profile) {
+    return {
+        def actual_reference_name = job_reference.split("/")[0]
+
+        stage("Stash lockfile") {
+            stash name: actual_reference_name, includes: "${lockfile}"
+        }
+
+        node {
+            docker.image(docker_image).inside("--net=docker_jenkins_artifactory") {
+                def server = Artifactory.server artifactory_name
+                def client = Artifactory.newConanClient(userHome: "${env.WORKSPACE}/conan_home".toString())
+                def remoteName = "artifactory-local"
+
+                unstash actual_reference_name
+                client.run(command: "install ${job_reference} --build=${actual_reference_name} --lockfile=${lockfile} --profile ${profile}".toString())
+                stash name: actual_reference_name, includes: "${lockfile}"
+            }
+        }
+
+        stage("Merge build infos") {
+            unstash actual_reference_name
+        }
+    }
+}
+
+
+node {
+    def state = "error"
+
+    try {
+        post_status("pending")
+
+        stage('Trigger') {
+            echo "Building project '${params.project_id}'"
+            echo " - for changes in '${params.reference}'"
+        }
+        
+        stage('Dynamic node') {
+            docker.image("conanio/gcc8").inside("--net=docker_jenkins_artifactory") {
+                echo "Inside the docker"
+                withEnv(["CONAN_USER_HOME=${env.WORKSPACE}/conan_home"]) {
+                    echo "Create a Conan client (CONAN_USER_HOME: '${env.WORKSPACE}/conan_home')".toString()
+                    def server = Artifactory.server artifactory_name
+                    def client = Artifactory.newConanClient(userHome: "${env.WORKSPACE}/conan_home".toString())
+                    def remoteName = "artifactory-local"
+
+                    def profile = "conanio-gcc8"
+                    def lockfile = "conan.lock"
+
+                    echo "Configure the Conan client"
+                    client.run(command: "config install ${config_url}".toString())
+                    client.run(command: "config install -sf hooks -tf hooks https://github.com/conan-io/hooks.git")
+                    client.remote.add server: server, repo: artifactory_repo, remoteName: remoteName, force: true
+
+                    echo "Install the reference"
+                    client.run(command: "install ${params.reference} --profile ${profile}".toString())
+                    client.run(command: "download ${params.project_id} -r ${remoteName}".toString())
+
+                    // TODO: Iterate profiles (can go in parallel)
+                    client.run(command: "graph lock --profile ${profile} --lockfile=${lockfile} ${params.project_id}".toString())
+                    sh "cat ${lockfile}"
+
+                    client.run(command: "remote list".toString())
+
+                    def build_order_file = "bo.json"
+                    client.run(command: "graph build-order ${lockfile} --build missing --json ${build_order_file}".toString())
+                    sh "cat ${build_order_file}"
+
+                    // Iterate build-order and call nodes
+                    def bo = readJSON file: build_order_file
+                    bo.each { it_stages ->
+
+                        def stage_jobs = [:]
+                        for (int i = 0; i < it_stages.size(); i++) {
+                            def job_reference = it_stages[i][1]
+                            def actual_reference_name = job_reference.split("/")[0]
+                            sh "cp ${lockfile} ${actual_reference_name}.lock"
+                            stage_jobs[actual_reference_name] = build_ref_with_lockfile(job_reference, lockfile, profile)
+                        }
+
+                        parallel stage_jobs
+
+                        stage_jobs.each { id, _ -> 
+                            client.run(command: "graph update-lock ${lockfile} ${id}.lock".toString())
+                            sh "cat ${lockfile}"
+                        }
+
+                    }
+
+                    sh "cat ${lockfile}"
+
+                }
+            }
+        }
+
+        state = "success"
+    }
+    finally {
+        post_status(state)
+        deleteDir() /* clean up our workspace */
+    }    
+}
