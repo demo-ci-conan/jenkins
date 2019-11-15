@@ -65,8 +65,10 @@ node {
                         for (int i = 0; i < it_stages.size(); i++) {
                             def job_reference = it_stages[i][1]
                             stage("Build ${job_reference}") {
+                                def actual_reference = job_reference.split("#")[0]
+                                def actual_reference_name = job_reference.split("/")[0]
                                 sh "cp ${lockfile} building.lock"
-                                client.run(command: "install ${job_reference} --build=${job_reference} --lockfile=building.lock".toString())
+                                client.run(command: "install ${actual_reference} --build=${actual_reference_name} --lockfile=building.lock".toString())
                                 client.run(command: "graph update-lock ${lockfile} building.lock")
                                 sh "cat ${lockfile}"
                             }
