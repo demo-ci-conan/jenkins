@@ -78,9 +78,6 @@ node {
                     def server = Artifactory.server artifactory_name
                     def client = Artifactory.newConanClient(userHome: "${env.WORKSPACE}/conan_home".toString())
 
-                    
-                    
-
                     echo "Configure the Conan client"
                     client.run(command: "config install ${config_url}".toString())
                     client.run(command: "config install -sf hooks -tf hooks https://github.com/conan-io/hooks.git")
