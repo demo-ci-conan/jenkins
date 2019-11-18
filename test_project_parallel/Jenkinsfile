@@ -83,7 +83,8 @@ node {
 
                     echo "Configure the Conan client"
                     client.run(command: "config install ${config_url}".toString())
-                    client.run(command: "config install -sf hooks -tf hooks https://github.com/conan-io/hooks.git")
+                    client.run(comamnd: "config get general.revisions_enabled")
+                    client.run(command: "config get general.default_package_id_mode")
                     client.remote.add server: server, repo: artifactory_repo, remoteName: remoteName, force: true
 
                     echo "Install the reference"
