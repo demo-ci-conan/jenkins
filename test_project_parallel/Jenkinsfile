@@ -155,20 +155,21 @@ node {
                 }
 
             }
-
-            unstash "lockfile"
-            sh "cat ${lockfile}"
-            echo "calculate revision"
-            def search_output = "search_output.json"
-            sh "conan search ${params.project_id} --revisions --raw --json=${search_output}"
-            def props = readJSON file: "search_output.json"
-            def revision = props[0]['revision']
-            echo "${revision}"
-            // upload conan.lock to meta
-            def server = Artifactory.server artifactory_name
-            def repo_path = "${params.project_id}/${revision}/${profile}/${lockfile}"
-            // TODO proper credentials handling
-            sh "curl -u \"\${CONAN_LOGIN_USERNAME}\":\"\${CONAN_PASSWORD}\" -X PUT \"${server.url}/meta/${repo_path}\" -T ${lockfile}"
+            docker.image("conanio/gcc8").inside("--net=docker_jenkins_artifactory") {
+                unstash "lockfile"
+                sh "cat ${lockfile}"
+                echo "calculate revision"
+                def search_output = "search_output.json"
+                sh "conan search ${params.project_id} --revisions --raw --json=${search_output}"
+                def props = readJSON file: "search_output.json"
+                def revision = props[0]['revision']
+                echo "${revision}"
+                // upload conan.lock to meta
+                def server = Artifactory.server artifactory_name
+                def repo_path = "${params.project_id}/${revision}/${profile}/${lockfile}"
+                // TODO proper credentials handling
+                sh "curl -u \"\${CONAN_LOGIN_USERNAME}\":\"\${CONAN_PASSWORD}\" -X PUT \"${server.url}/meta/${repo_path}\" -T ${lockfile}"
+            }
         }
 
         stage ("Notify success") {
