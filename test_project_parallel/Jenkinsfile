@@ -104,7 +104,7 @@ pipeline {
     stage("Compute build order") {
       steps {
         script {
-          docker.image("conanio/gcc8").inside("--net=docker_jenkins_artifactory") {
+          docker.image("conanio/gcc8").inside("--net=host") {
             unstash "lockfile"
 
             def server = Artifactory.server artifactory_name
@@ -150,7 +150,7 @@ pipeline {
             }
             
             stage ("Complete lockfile") {
-              docker.image("conanio/gcc8").inside("--net=docker_jenkins_artifactory") {
+              docker.image("conanio/gcc8").inside("--net=host") {
                 unstash "lockfile"
 
                   for (int i = 0; i < stage_lockfiles.size(); i++) {
