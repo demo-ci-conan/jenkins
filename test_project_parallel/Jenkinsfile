@@ -159,6 +159,8 @@ node {
 
             unstash "lockfile"
             sh "cat ${lockfile}"
+
+            sh 'false'
         }
 
         stage ("Notify success") {
