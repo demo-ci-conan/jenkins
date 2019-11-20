@@ -171,6 +171,7 @@ node {
         stage ("Notify failure") {
             post_status("error")
         }
+        throw error
     }
     finally {
         deleteDir() /* clean up our workspace */
