@@ -155,6 +155,7 @@ node {
                         def server = Artifactory.server artifactory_name
                         def repo_path = "${params.project_id}/${profile}/${lockfile}"
                         echo "${repo_path}"
+                        echo "curl -u admin:password -X PUT \"${server.url}/meta/${repo_path}\" -T ${lockfile}"
                         // TODO proper credentials handling
                         sh "curl -u admin:password -X PUT \"${server.url}/meta/${repo_path}\" -T ${lockfile}"
                     }
