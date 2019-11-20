@@ -5,18 +5,6 @@ def artifactory_repo = "hackathonv5-build"
 def config_url = "https://github.com/demo-ci-conan/settings.git"
 def remoteName = "artifactory-local"
 
-def post_status(state) {
-    def context = "conan-ci/projects - ${params.project_id} - ${params.reference}"
-    def description = "Build for '${params.reference}' done!"
-    def target_url = "https://my.url"
-
-    withCredentials([usernamePassword(credentialsId: 'github-user-token', passwordVariable: 'pass', usernameVariable: 'user')]) {
-        def url = "https://api.github.com/repos/${params.organization}/${params.repository}/statuses/${params.sha1}?access_token=$pass"
-        def payload = JsonOutput.toJson(["state": state, "context": context, "description": description, "target_url": target_url])
-        def response = sh(returnStdout: true, script: "curl -v -H \"Accept: application/json\" -H \"Content-type: application/json\" -X POST -d '${payload}' ${url}").trim()
-    }
-}
-
 def build_ref_with_lockfile(job_reference, lockfile, profile, config_url, artifactory_name, remoteName, artifactory_repo) {
     return {
         node {
@@ -75,8 +63,6 @@ pipeline {
     stage('Build information') {
       steps {
         script {
-          post_status("pending")
-
           echo "Building project '${params.project_id}'"
           echo " - for changes in '${params.reference}'"
         }
@@ -186,15 +172,6 @@ pipeline {
           sh 'false'
         }
       }
-    }
-  }
-
-  post {
-    success {
-      post_status("success")
-    }
-    failure {
-      post_status("error")
     }
   }
 }
