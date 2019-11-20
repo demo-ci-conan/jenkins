@@ -156,8 +156,11 @@ node {
 
             }
             docker.image("conanio/gcc8").inside("--net=docker_jenkins_artifactory") {
+                def server = Artifactory.server artifactory_name
+                def client = Artifactory.newConanClient()
                 client.run(command: "config install ${config_url}".toString())
                 client.run(command: "config install -sf hooks -tf hooks https://github.com/conan-io/hooks.git")
+                client.remote.add server: server, repo: artifactory_repo, remoteName: remoteName, force: true
 
                 unstash "lockfile"
                 sh "cat ${lockfile}"
@@ -168,7 +171,6 @@ node {
                 def revision = props[0]['revision']
                 echo "${revision}"
                 // upload conan.lock to meta
-                def server = Artifactory.server artifactory_name
                 def repo_path = "${params.project_id}/${revision}/${profile}/${lockfile}"
                 // TODO proper credentials handling
                 sh "curl -u \"\${CONAN_LOGIN_USERNAME}\":\"\${CONAN_PASSWORD}\" -X PUT \"${server.url}/meta/${repo_path}\" -T ${lockfile}"
