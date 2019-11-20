@@ -56,124 +56,135 @@ def build_ref_with_lockfile(job_reference, lockfile, profile, config_url, artifa
     }
 }
 
+def profile = "conanio-gcc8"
+def lockfile = "conan.lock"
+def build_order_file = "bo.json"
 
-node {
-    try {
-        post_status("pending")
+pipeline {
+  agent any
+  stages {
+    stage('Build information') {
+      steps {
+        script {
+          post_status("pending")
 
-        stage('Build information') {
-            echo "Building project '${params.project_id}'"
-            echo " - for changes in '${params.reference}'"
+          echo "Building project '${params.project_id}'"
+          echo " - for changes in '${params.reference}'"
         }
+      }
+    }
         
-        def profile = "conanio-gcc8"
-        def lockfile = "conan.lock"
+    stage('Dynamic node') {
+      steps {
+        script {
+          docker.image("conanio/gcc8").inside("--net=host") {
+            echo "Inside the docker"
+            withEnv(["CONAN_USER_HOME=${env.WORKSPACE}/conan_home"]) {
+              echo "Create a Conan client (CONAN_USER_HOME: '${env.WORKSPACE}/conan_home')".toString()
+              def server = Artifactory.server artifactory_name
+              def client = Artifactory.newConanClient(userHome: "${env.WORKSPACE}/conan_home".toString())
 
-        stage('Dynamic node') {
-            docker.image("conanio/gcc8").inside("--net=host") {
-                echo "Inside the docker"
-                withEnv(["CONAN_USER_HOME=${env.WORKSPACE}/conan_home"]) {
-                    echo "Create a Conan client (CONAN_USER_HOME: '${env.WORKSPACE}/conan_home')".toString()
-                    def server = Artifactory.server artifactory_name
-                    def client = Artifactory.newConanClient(userHome: "${env.WORKSPACE}/conan_home".toString())
+              echo "Configure the Conan client"
+              client.run(command: "config install ${config_url}".toString())
+              //client.run(comamnd: "config get general.revisions_enabled")
+              //client.run(command: "config get general.default_package_id_mode")
+              client.remote.add server: server, repo: artifactory_repo, remoteName: remoteName, force: true
 
-                    echo "Configure the Conan client"
-                    client.run(command: "config install ${config_url}".toString())
-                    //client.run(comamnd: "config get general.revisions_enabled")
-                    //client.run(command: "config get general.default_package_id_mode")
-                    client.remote.add server: server, repo: artifactory_repo, remoteName: remoteName, force: true
+              echo "Install the reference"
+              client.run(command: "install ${params.reference} --profile ${profile}".toString())
+              client.run(command: "download ${params.project_id} -r ${remoteName}".toString())
 
-                    echo "Install the reference"
-                    client.run(command: "install ${params.reference} --profile ${profile}".toString())
-                    client.run(command: "download ${params.project_id} -r ${remoteName}".toString())
+              // TODO: Iterate profiles (can go in parallel)
+              client.run(command: "graph lock --profile ${profile} --lockfile=${lockfile} ${params.project_id}".toString())
+              sh "cat ${lockfile}"
 
-                    // TODO: Iterate profiles (can go in parallel)
-                    client.run(command: "graph lock --profile ${profile} --lockfile=${lockfile} ${params.project_id}".toString())
-                    sh "cat ${lockfile}"
-
-                    stash name: "lockfile", includes: "${lockfile}"
-                }
+              stash name: "lockfile", includes: "${lockfile}"
             }
+          }
         }
+      }
+    }
 
-        def build_order_file = "bo.json"
+    stage("Compute build order") {
+      steps {
+        script {
+          docker.image("conanio/gcc8").inside("--net=docker_jenkins_artifactory") {
+            unstash "lockfile"
 
-        stage("Compute build order") {
-            docker.image("conanio/gcc8").inside("--net=docker_jenkins_artifactory") {
+            def server = Artifactory.server artifactory_name
+            def client = Artifactory.newConanClient()
+            client.run(command: "config install ${config_url}".toString())
+            client.run(command: "config install -sf hooks -tf hooks https://github.com/conan-io/hooks.git")
+            client.remote.add server: server, repo: artifactory_repo, remoteName: remoteName, force: true
+
+            client.run(command: "graph build-order ${lockfile} --build missing --json ${build_order_file}".toString())
+            sh "cat ${build_order_file}"
+
+            stash name: "build_order", includes: "${build_order_file}"                
+          }
+        }
+      }
+    }
+
+    stage("Iterate build order") {
+      steps {
+        script {
+          unstash "lockfile"
+          unstash "build_order"
+
+          // Iterate build-order and call nodes
+          def bo = readJSON file: build_order_file
+          bo.each { it_stages ->
+
+            def stage_lockfiles = []
+            def stage_jobs = [:]
+            for (int i = 0; i < it_stages.size(); i++) {
+              def job_reference = it_stages[i][1]
+              def actual_reference_name = job_reference.split("/")[0]
+              
+              sh "cp ${lockfile} ${actual_reference_name}.lock"
+              stash name: actual_reference_name, includes: "${actual_reference_name}.lock"
+              
+              stage_lockfiles.add(actual_reference_name)
+              stage_jobs[actual_reference_name] = build_ref_with_lockfile(job_reference, lockfile, profile, config_url, artifactory_name, remoteName, artifactory_repo)
+            }
+
+            stage ("Compile stage") {
+              parallel stage_jobs
+            }
+            
+            stage ("Complete lockfile") {
+              docker.image("conanio/gcc8").inside("--net=docker_jenkins_artifactory") {
                 unstash "lockfile"
 
-                def server = Artifactory.server artifactory_name
-                def client = Artifactory.newConanClient()
-                client.run(command: "config install ${config_url}".toString())
-                client.run(command: "config install -sf hooks -tf hooks https://github.com/conan-io/hooks.git")
-                client.remote.add server: server, repo: artifactory_repo, remoteName: remoteName, force: true
+                  for (int i = 0; i < stage_lockfiles.size(); i++) {
+                    unstash stage_lockfiles[i]
+                      sh "cat ${stage_lockfiles[i]}.lock"
+                      sh "conan graph update-lock ${lockfile} ${stage_lockfiles[i]}.lock"
+                      sh "cat ${lockfile}"
+                  }
 
-                client.run(command: "graph build-order ${lockfile} --build missing --json ${build_order_file}".toString())
-                sh "cat ${build_order_file}"
-
-                stash name: "build_order", includes: "${build_order_file}"                
-            }
-        }
-
-        stage("Iterate build order") {
-            unstash "lockfile"
-            unstash "build_order"
-
-            // Iterate build-order and call nodes
-            def bo = readJSON file: build_order_file
-            bo.each { it_stages ->
-
-                def stage_lockfiles = []
-                def stage_jobs = [:]
-                for (int i = 0; i < it_stages.size(); i++) {
-                    def job_reference = it_stages[i][1]
-                    def actual_reference_name = job_reference.split("/")[0]
-                    
-                    sh "cp ${lockfile} ${actual_reference_name}.lock"
-                    stash name: actual_reference_name, includes: "${actual_reference_name}.lock"
-                    
-                    stage_lockfiles.add(actual_reference_name)
-                    stage_jobs[actual_reference_name] = build_ref_with_lockfile(job_reference, lockfile, profile, config_url, artifactory_name, remoteName, artifactory_repo)
-                }
-
-                stage ("Compile stage") {
-                    parallel stage_jobs
-                }
-                
-                stage ("Complete lockfile") {
-                    docker.image("conanio/gcc8").inside("--net=docker_jenkins_artifactory") {
-                        unstash "lockfile"
-
-                        for (int i = 0; i < stage_lockfiles.size(); i++) {
-                            unstash stage_lockfiles[i]
-                            sh "cat ${stage_lockfiles[i]}.lock"
-                            sh "conan graph update-lock ${lockfile} ${stage_lockfiles[i]}.lock"
-                            sh "cat ${lockfile}"
-                        }
-
-                        stash name: "lockfile", includes: "${lockfile}"
-                    }
-                }
-
+                stash name: "lockfile", includes: "${lockfile}"
+              }
             }
 
-            unstash "lockfile"
-            sh "cat ${lockfile}"
+          }
 
-            sh 'false'
-        }
+          unstash "lockfile"
+          sh "cat ${lockfile}"
 
-        stage ("Notify success") {
-            post_status("success")
+          sh 'false'
         }
+      }
     }
-    catch (error) {
-        stage ("Notify failure") {
-            post_status("error")
-        }
-        throw error
+  }
+
+  post {
+    success {
+      post_status("success")
     }
-    finally {
-        deleteDir() /* clean up our workspace */
-    }    
+    failure {
+      post_status("error")
+    }
+  }
 }
