@@ -89,6 +89,7 @@ pipeline {
           docker.image("conanio/gcc8").inside("--net=host") {
             echo "Inside the docker"
             withEnv(["CONAN_USER_HOME=${env.WORKSPACE}/conan_home"]) {
+              sh 'rm -rf "${CONAN_USER_HOME}"'
               echo "Create a Conan client (CONAN_USER_HOME: '${env.WORKSPACE}/conan_home')".toString()
               def server = Artifactory.server artifactory_name
               def client = Artifactory.newConanClient(userHome: "${env.WORKSPACE}/conan_home".toString())
