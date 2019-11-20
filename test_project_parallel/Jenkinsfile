@@ -162,7 +162,7 @@ node {
             def server = Artifactory.server artifactory_name
             def repo_path = "${params.project_id}/${profile}/${lockfile}"
             // TODO proper credentials handling
-            sh "curl -u admin:password -X PUT \"${server.url}/meta/${repo_path}\" -T ${lockfile}"
+            sh "curl -u \"\${CONAN_LOGIN_USERNAME}\":\"\${CONAN_PASSWORD}\" -X PUT \"${server.url}/meta/${repo_path}\" -T ${lockfile}"
         }
 
         stage ("Notify success") {
