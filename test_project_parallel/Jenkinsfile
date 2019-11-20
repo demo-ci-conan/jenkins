@@ -158,12 +158,11 @@ node {
 
             unstash "lockfile"
             sh "cat ${lockfile}"
+            echo "calculate revision"
             sh "conan search ${params.project_id} --revisions --raw --json=${search_output}"
-            stash name: "full_reference", includes: search_output
             def props = readJSON file: "search_output.json"
             def revision = props[0]['revision']
-            def reference = "${name}/${version}@${user_channel}#${revision}"
-            echo "Full reference: '${reference}'"
+            echo "${revision}"
             // upload conan.lock to meta
             def server = Artifactory.server artifactory_name
             def repo_path = "${params.project_id}/${revision}/${profile}/${lockfile}"
