@@ -159,6 +159,7 @@ node {
             unstash "lockfile"
             sh "cat ${lockfile}"
             echo "calculate revision"
+            def search_output = "search_output.json"
             sh "conan search ${params.project_id} --revisions --raw --json=${search_output}"
             def props = readJSON file: "search_output.json"
             def revision = props[0]['revision']
