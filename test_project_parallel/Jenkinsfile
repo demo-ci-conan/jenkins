@@ -142,6 +142,9 @@ node {
                 
                 stage ("Complete lockfile") {
                     docker.image("conanio/gcc8").inside("--net=docker_jenkins_artifactory") {
+                        def server = Artifactory.server artifactory_name
+                        def client = Artifactory.newConanClient()
+
                         unstash "lockfile"
 
                         for (int i = 0; i < stage_lockfiles.size(); i++) {
@@ -152,6 +155,9 @@ node {
                         }
 
                         stash name: "lockfile", includes: "${lockfile}"
+                        
+                        def repo_path = "'${params.project_id}'/${profile}/${lockfile}"
+                        sh "curl -u admin:password -X PUT \"http://${server.url}/meta/${repo_path}\" -T ${lockfile}"
                     }
                 }
 
