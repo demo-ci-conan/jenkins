@@ -1,7 +1,7 @@
 import groovy.json.JsonOutput
 
 def artifactory_name = "Artifactory Docker"
-def artifactory_repo = "conan-local"
+def artifactory_repo = "hackathonv5-build"
 def config_url = "https://github.com/demo-ci-conan/settings.git"
 def remoteName = "artifactory-local"
 
