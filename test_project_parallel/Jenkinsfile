@@ -156,11 +156,17 @@ node {
 
             }
             docker.image("conanio/gcc8").inside("--net=docker_jenkins_artifactory") {
+                def server = Artifactory.server artifactory_name
+                def client = Artifactory.newConanClient()
+                client.run(command: "config install ${config_url}".toString())
+                client.run(command: "config install -sf hooks -tf hooks https://github.com/conan-io/hooks.git")
+                client.remote.add server: server, repo: artifactory_repo, remoteName: remoteName, force: true      
+
                 unstash "lockfile"
                 sh "cat ${lockfile}"
                 echo "calculate revision"
                 def search_output = "search_output.json"
-                sh "conan search ${params.project_id} --revisions --raw --json=${search_output}"
+                client.run(command: "search ${params.project_id} --revisions --raw --json=${search_output}")
                 def props = readJSON file: "search_output.json"
                 def revision = props[0]['revision']
                 echo "${revision}"
