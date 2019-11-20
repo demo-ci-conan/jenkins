@@ -168,8 +168,6 @@ pipeline {
 
           unstash "lockfile"
           sh "cat ${lockfile}"
-
-          sh 'false'
         }
       }
     }
