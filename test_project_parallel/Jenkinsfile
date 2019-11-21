@@ -92,7 +92,7 @@ pipeline {
 
               echo "Install the reference"
               httpRequest(
-                  url: "${server.url}/hackathonv5-metadata/${params.project_id}/conan.lock",
+                  url: "${server.url}/hackathonv5-metadata/${params.project_id}/${profile}/conan.lock",
                   outputFile: lockfile,
               )
               client.run(command: "install ${shell_quote(params.project_id)} --lockfile=${shell_quote(lockfile)} --profile ${shell_quote(profile)}".toString())
