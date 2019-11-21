@@ -5,6 +5,10 @@ def artifactory_repo = "hackathonv5-build"
 def config_url = "https://github.com/demo-ci-conan/settings.git"
 def remoteName = "artifactory-local"
 
+def shell_quote(word) {
+  return "'" + word.replace("'", "'\\''") + "'"
+}
+
 def build_ref_with_lockfile(job_reference, lockfile, profile, config_url, artifactory_name, remoteName, artifactory_repo) {
     return {
         node {
@@ -87,8 +91,12 @@ pipeline {
               client.remote.add server: server, repo: artifactory_repo, remoteName: remoteName, force: true
 
               echo "Install the reference"
-              client.run(command: "install ${params.reference} --profile ${profile}".toString())
-              client.run(command: "download ${params.project_id} -r ${remoteName}".toString())
+              httpRequest(
+                  url: "${server.url}/hackathonv5-metadata/${params.project_id}/conan.lock",
+                  outputFile: lockfile,
+              )
+              client.run(command: "install ${shell_quote(params.project_id)} --lockfile=${shell_quote(lockfile)} --profile ${shell_quote(profile)}".toString())
+              client.run(command: "install ${shell_quote(params.reference)} --profile ${shell_quote(profile)}".toString())
 
               // TODO: Iterate profiles (can go in parallel)
               client.run(command: "graph lock --profile ${profile} --lockfile=${lockfile} ${params.project_id}".toString())
