@@ -16,7 +16,7 @@ def build_ref_with_lockfile(job_reference, lockfile, profile, config_url, artifa
         def server = Artifactory.server artifactory_name
         def client = Artifactory.newConanClient()
 
-        client.run(command: "config install ${config_url}".toString())
+        client.run(command: "config install ${shell_quote(config_url)}".toString())
         client.remote.add server: server, repo: artifactory_repo, remoteName: remoteName, force: true
 
         def actual_reference_name = job_reference.split("/")[0]
@@ -24,17 +24,17 @@ def build_ref_with_lockfile(job_reference, lockfile, profile, config_url, artifa
         def actual_reference = job_reference.split("#")[0]
 
         echo("Build ${actual_reference_name}")
-        unstash actual_reference_name
+        unstash 'lockfile'
 
-        sh "cat ${actual_reference_name}.lock"
-        sh "cp ${actual_reference_name}.lock conan.lock"  // TODO: Have a look to this rename, shouldn't be needed
-        client.run(command: "install ${recipe_reference_with_revision} --build ${actual_reference} --lockfile conan.lock --profile ${profile}".toString())
-        sh "cp conan.lock ${actual_reference_name}.lock"
-        sh "cat ${actual_reference_name}.lock"
+        client.run(command: "install ${shell_quote(recipe_reference_with_revision)} --build ${shell_quote(actual_reference)} --lockfile conan.lock --profile ${shell_quote(profile)}".toString())
+        sh("""\
+mv conan.lock ${actual_reference_name}.lock
+cat ${actual_reference_name}.lock
+""")
         stash name: actual_reference_name, includes: "${actual_reference_name}.lock"
 
         echo("Upload packages")
-        String uploadCommand = "upload ${actual_reference} --all -r ${remoteName} --confirm"
+        String uploadCommand = "upload ${shell_quote(actual_reference)} --all -r ${shell_quote(remoteName)} --confirm"
         client.run(command: uploadCommand)  // TODO: Better if we share the cache for these jobs... shouldn't have race conditions.
       }
       finally {
@@ -47,9 +47,10 @@ def build_ref_with_lockfile(job_reference, lockfile, profile, config_url, artifa
 def profile = "conanio-gcc8"
 def lockfile = "conan.lock"
 def build_order_file = "bo.json"
+def build_order = null
 
 pipeline {
-  agent any
+  agent none
 
   parameters {
     string(name: 'reference',   )
@@ -68,8 +69,9 @@ pipeline {
         }
       }
     }
-        
+
     stage('Dynamic node') {
+      agent any
       steps {
         script {
           docker.image("conanio/gcc8").inside("--net=host") {
@@ -81,7 +83,7 @@ pipeline {
               def client = Artifactory.newConanClient(userHome: "${env.WORKSPACE}/conan_home".toString())
 
               echo "Configure the Conan client"
-              client.run(command: "config install ${config_url}".toString())
+              client.run(command: "config install ${shell_quote(config_url)}".toString())
               //client.run(comamnd: "config get general.revisions_enabled")
               //client.run(command: "config get general.default_package_id_mode")
               client.remote.add server: server, repo: artifactory_repo, remoteName: remoteName, force: true
@@ -95,10 +97,10 @@ pipeline {
               client.run(command: "install ${shell_quote(params.reference)} --update --profile ${shell_quote(profile)}".toString())
 
               // TODO: Iterate profiles (can go in parallel)
-              client.run(command: "graph lock --profile ${profile} --lockfile=${lockfile} ${params.project_id}".toString())
-              sh "cat ${lockfile}"
+              client.run(command: "graph lock --profile ${shell_quote(profile)} --lockfile=${shell_quote(lockfile)} ${shell_quote(params.project_id)}".toString())
+              sh "cat ${shell_quote(lockfile)}"
 
-              stash name: "lockfile", includes: "${lockfile}"
+              stash name: 'lockfile', includes: lockfile
             }
           }
         }
@@ -106,6 +108,7 @@ pipeline {
     }
 
     stage("Compute build order") {
+      agent any
       steps {
         script {
           docker.image("conanio/gcc8").inside("--net=host") {
@@ -117,10 +120,9 @@ pipeline {
             client.run(command: "config install -sf hooks -tf hooks https://github.com/conan-io/hooks.git")
             client.remote.add server: server, repo: artifactory_repo, remoteName: remoteName, force: true
 
-            client.run(command: "graph build-order ${lockfile} --build missing --json ${build_order_file}".toString())
-            sh "cat ${build_order_file}"
-
-            stash name: "build_order", includes: "${build_order_file}"                
+            client.run(command: "graph build-order ${shell_quote(lockfile)} --build missing --json ${shell_quote(build_order_file)}".toString())
+            sh "cat ${shell_quote(build_order_file)}"
+            build_order = readJSON file: build_order_file
           }
         }
       }
@@ -129,22 +131,12 @@ pipeline {
     stage("Iterate build order") {
       steps {
         script {
-          unstash "lockfile"
-          unstash "build_order"
-
           // Iterate build-order and call nodes
-          def bo = readJSON file: build_order_file
-          bo.each { it_stages ->
-
-            def stage_lockfiles = []
+          build_order.each { it_stages ->
             def stage_jobs = it_stages.collectEntries {
               def job_reference = it[1]
               def actual_reference_name = job_reference.split("/")[0]
               
-              sh "cp ${lockfile} ${actual_reference_name}.lock"
-              stash name: actual_reference_name, includes: "${actual_reference_name}.lock"
-              
-              stage_lockfiles.add(actual_reference_name)
               ["${actual_reference_name}": {
                   stage(actual_reference_name) {
                     build_ref_with_lockfile(job_reference, lockfile, profile, config_url, artifactory_name, remoteName, artifactory_repo)
@@ -154,22 +146,26 @@ pipeline {
 
             parallel stage_jobs
             
-            docker.image("conanio/gcc8").inside("--net=host") {
-              unstash "lockfile"
+            node {
+              docker.image("conanio/gcc8").inside("--net=host") {
+                unstash 'lockfile'
 
-                for (int i = 0; i < stage_lockfiles.size(); i++) {
-                  unstash stage_lockfiles[i]
-                    sh "cat ${stage_lockfiles[i]}.lock"
-                    sh "conan graph update-lock ${lockfile} ${stage_lockfiles[i]}.lock"
-                    sh "cat ${lockfile}"
+                stage_jobs.each { actual_reference_name, _ ->
+                  unstash actual_reference_name
+                  sh("conan graph update-lock ${shell_quote(lockfile)} ${shell_quote(actual_reference_name)}.lock")
                 }
 
-              stash name: "lockfile", includes: "${lockfile}"
+                stash name: 'lockfile', includes: lockfile
+              }
             }
           }
 
-          unstash "lockfile"
-          sh "cat ${lockfile}"
+          if (build_order.size() <= 0) {
+            node {
+              unstash 'lockfile'
+              sh "cat ${lockfile}"
+            }
+          }
         }
       }
     }
