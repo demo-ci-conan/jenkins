@@ -96,7 +96,7 @@ pipeline {
                   outputFile: lockfile,
               )
               client.run(command: "install ${shell_quote(params.project_id)} --lockfile=${shell_quote(lockfile)} --profile ${shell_quote(profile)}".toString())
-              client.run(command: "install ${shell_quote(params.reference)} --profile ${shell_quote(profile)}".toString())
+              client.run(command: "install ${shell_quote(params.reference)} --update --profile ${shell_quote(profile)}".toString())
 
               // TODO: Iterate profiles (can go in parallel)
               client.run(command: "graph lock --profile ${profile} --lockfile=${lockfile} ${params.project_id}".toString())
